@@ -1,0 +1,5 @@
+run:
+  skip-dirs:
+    - example
+  skip-files:
+    - .*_test.go

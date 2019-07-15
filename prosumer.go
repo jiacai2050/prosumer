@@ -133,10 +133,12 @@ func (c Coordinator) Close(graceful bool) error {
 // Put new element into inner buffer queue. It return error when inner buffer queue is full, and elements failed putting to queue is the first return value.
 // Due to different RejectPolicy, multiple elements may be discarded before current element put successfully.
 // Common usages pattern:
-// discarded, err := c.Put(e)
-// if err != nil {
-// 	fmt.Errorf("discarded elements %+v for err %v", discarded, err)
-// }
+//
+//  discarded, err := c.Put(e)
+//  if err != nil {
+// 	  fmt.Errorf("discarded elements %+v for err %v", discarded, err)
+//  }
+//
 func (c Coordinator) Put(e interface{}) ([]interface{}, error) {
 	return c.queue.enqueue(e)
 }
@@ -173,7 +175,7 @@ func DefaultConfig(con Consumer) Config {
 		BatchSize:     100,
 		BatchInterval: 500 * time.Millisecond,
 		ErrCallback: func(ls []interface{}, err error) {
-			fmt.Errorf("consumer failed. list: %v, err: %v", ls, err)
+			fmt.Println(fmt.Errorf("consumer failed. list: %v, err: %v", ls, err))
 		},
 
 		NumConsumer: 2,
