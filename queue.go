@@ -1,46 +1,57 @@
 package prosumer
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
 
-// RejectPolicy decide what to do when Enqueue is called and the queue is full
+// RejectPolicy control which elements get discarded when the queue is full
 type RejectPolicy int
 
 const (
-	// Block current goroutine
+	// Block current goroutine, no element discarded
 	Block RejectPolicy = iota
 	// Discard current element
 	Discard
-	// Remove the oldest from the queue, make room for new element
+	// Discard the oldest to make room for new element
 	DiscardOldest
 )
 
-type Queue struct {
+var (
+	ErrDiscard       = errors.New("discard point")
+	ErrDiscardOldest = errors.New("discard oldest point")
+)
+
+type queue struct {
 	ch chan interface{}
 
 	rp        RejectPolicy
 	waitClose *sync.WaitGroup
 }
 
-func (q *Queue) Enqueue(e interface{}) {
+func (q *queue) enqueue(e interface{}) ([]interface{}, error) {
 	select {
 	case q.ch <- e:
+		return nil, nil
 	default:
 		switch q.rp {
 		case Block:
 			q.ch <- e
+			return nil, nil
 		case Discard:
-			log.Warningf("inner queue full(len=%d), discard: %v", q.Size(), e)
+			return []interface{}{e}, ErrDiscard
 		case DiscardOldest:
 			for {
-				if e, ok := <-q.ch; ok {
-					log.Warningf("inner queue full(len=%d), discardOldest: %v", q.Size(), e)
+				var discarded []interface{}
+				// when discard the oldest, other worker may preempt the slot,
+				// so may discard more than one element.
+				if v, ok := <-q.ch; ok {
+					discarded = append(discarded, v)
 				}
 				select {
 				case q.ch <- e:
-					return
+					return discarded, ErrDiscardOldest
 				default:
 					// default is required for nonblocking read
 				}
@@ -49,34 +60,37 @@ func (q *Queue) Enqueue(e interface{}) {
 		}
 
 	}
+	return nil, nil
 }
 
-func (q *Queue) Dequeue() (interface{}, bool) {
+func (q *queue) dequeue() (interface{}, bool) {
 	v, ok := <-q.ch
 	return v, ok
 }
 
-func (q *Queue) Size() int {
+func (q *queue) size() int {
 	return len(q.ch)
 }
 
-func (q *Queue) Cap() int {
+func (q *queue) cap() int {
 	return cap(q.ch)
 }
 
-func (q *Queue) Close() {
+func (q *queue) close(graceful bool) {
 	close(q.ch)
-	for {
-		if q.Size() == 0 {
-			break
+	if graceful {
+		for {
+			if q.size() == 0 {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
 		}
-		time.Sleep(50 * time.Millisecond)
+		q.waitClose.Done()
 	}
-	q.waitClose.Done()
 }
 
-func NewQueue(bufferSize int, rp RejectPolicy, waitClose *sync.WaitGroup) *Queue {
-	return &Queue{
+func newQueue(bufferSize int, rp RejectPolicy, waitClose *sync.WaitGroup) *queue {
+	return &queue{
 		ch:        make(chan interface{}, bufferSize),
 		rp:        rp,
 		waitClose: waitClose,

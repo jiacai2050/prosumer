@@ -27,29 +27,34 @@ This is just a quick introduction, view the [GoDoc](https://godoc.org/github.com
 Let's start with a trivial example:
 
 ```go
-var received []int
-consumer := func(ls []interface{}) error {
-	for _, e := range ls {
-		received = append(received, e.(int))
+func main() {
+	maxLoop := 10
+	var wg sync.WaitGroup
+	wg.Add(maxLoop)
+	defer wg.Wait()
+	
+	consumer := func(ls []interface{}) error {
+		fmt.Printf("get %+v \n", ls)
+		wg.Add(-len(ls))
+		return nil
 	}
-	return nil
-}
-coord := NewCoordinator(DefaultConfig(Consumer(consumer)))
-coord.Start()
-maxLoop := 200
-for i := 0; i < maxLoop; i++ {
-	coord.Put(i)
-}
-// Close is graceful, blocking. All elements inside buffer queue will make sure to be consumed.
-coord.Close()
 
-assert.Equal(t, maxLoop, len(received))
-for i := 0; i < maxLoop; i++ {
-	assert.Equal(t, i, received[i])
-}
+	conf := prosumer.DefaultConfig(prosumer.Consumer(consumer))
+	c := prosumer.NewCoordinator(conf)
+	c.Start()
 
+	for i := 0; i < maxLoop; i++ {
+		fmt.Printf("try put %v\n", i)
+		discarded, err := c.Put(i)
+		if err != nil {
+			fmt.Errorf("discarded elements %+v for err %v", discarded, err)
+			wg.Add(-len(discarded))
+		}
+		time.Sleep(time.Second)
+	}
+	c.Close(true)
+}
 ```
-By default, log will print to stdout, you can custom `PROSUMER_LOGFILE` environment to redirect to a file.
 
 ## License
 

@@ -34,7 +34,7 @@ func TestBlock(t *testing.T) {
 		coord.Put(i)
 	}
 
-	coord.Close()
+	coord.Close(true)
 
 	assert.Equal(t, maxLoop, len(received))
 
@@ -71,7 +71,7 @@ func TestDiscard(t *testing.T) {
 		coord.Put(i)
 	}
 
-	coord.Close()
+	coord.Close(true)
 
 	assert.True(t, maxLoop >= len(received))
 	assert.True(t, bufferSize <= len(received))
@@ -114,7 +114,7 @@ func TestDiscardOldest(t *testing.T) {
 		coord.Put(i)
 	}
 
-	coord.Close()
+	coord.Close(true)
 
 	assert.True(t, maxLoop >= len(received))
 	assert.True(t, bufferSize <= len(received))
@@ -160,7 +160,7 @@ func TestMultipleConsumer(t *testing.T) {
 		coord.Put(i)
 	}
 
-	coord.Close()
+	coord.Close(true)
 
 	assert.Equal(t, len(received), maxLoop)
 }

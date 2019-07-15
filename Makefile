@@ -5,7 +5,7 @@ GO111MODULE=on
 GOLINT := $(shell command -v golangci-lint)
 
 test:
-	go clean -testcache && go test -v ./...
+	go clean -testcache && go test -v .
 
 lint:
 ifndef GOLINT

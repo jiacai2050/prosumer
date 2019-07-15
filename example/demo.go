@@ -2,10 +2,9 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"net/http"
 	_ "net/http/pprof"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/jiacai2050/prosumer"
@@ -19,38 +18,36 @@ func init() {
 			panic(err)
 		}
 	}()
-
 }
-func main() {
 
-	var ops uint64
+func main() {
+	maxLoop := 10
+	var wg sync.WaitGroup
+	wg.Add(maxLoop)
+	defer wg.Wait()
 
 	consumer := func(ls []interface{}) error {
-		atomic.AddUint64(&ops, uint64(len(ls)))
+		fmt.Printf("get %+v \n", ls)
+		wg.Add(-len(ls))
 		return nil
 	}
 
-	go func() {
-		var last uint64
-		for {
-			now := time.Now()
-			current := atomic.LoadUint64(&ops)
-
-			fmt.Printf("%s ops=%v\n", now, current-last)
-
-			last = current
-			time.Sleep(time.Second)
-		}
-
-	}()
 	conf := prosumer.DefaultConfig(prosumer.Consumer(consumer))
 	conf.NumConsumer = 1
-	conf.BatchSize = 512
+	conf.BatchSize = maxLoop + 1
+	conf.BufferSize = maxLoop
+	conf.BatchInterval = 1 * time.Second
 	c := prosumer.NewCoordinator(conf)
 	c.Start()
 
-	maxLoop := math.MaxInt64
 	for i := 0; i < maxLoop; i++ {
-		c.Put(i)
+		fmt.Printf("try put %v\n", i)
+		discarded, err := c.Put(i)
+		if err != nil {
+			fmt.Errorf("discarded elements %+v for err %v", discarded, err)
+			wg.Add(-len(discarded))
+		}
+		time.Sleep(time.Second)
 	}
+	c.Close(true)
 }
