@@ -7,3 +7,7 @@ go:
 script:
 - make lint  
 - make test
+- make cover
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)

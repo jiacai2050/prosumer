@@ -2,6 +2,7 @@
 
 [![GoDoc](https://godoc.org/github.com/jiacai2050/prosumer?status.svg)](https://godoc.org/github.com/jiacai2050/prosumer)
 [![Build Status](https://travis-ci.org/jiacai2050/prosumer.svg?branch=master)](https://travis-ci.org/jiacai2050/prosumer)
+[![codecov](https://codecov.io/gh/jiacai2050/prosumer/branch/master/graph/badge.svg)](https://codecov.io/gh/jiacai2050/prosumer)
 
 A producer-consumer solution for Golang.
 

@@ -43,7 +43,7 @@ func (w worker) start() {
 			}
 		}
 	}
-
+loop:
 	for {
 		if e, ok := w.queue.dequeue(); ok {
 			received = append(received, e)
@@ -62,7 +62,7 @@ func (w worker) start() {
 				watchdog.Stop()
 				doWork()
 				w.waitClose.Done()
-				return
+				break loop
 			case <-watchdog.C:
 				doWork()
 			}

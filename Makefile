@@ -1,11 +1,17 @@
 GO111MODULE=on
 
-.PHONY: test lint
+.PHONY: test lint cover html
 
 GOLINT := $(shell command -v golangci-lint)
 
 test:
 	go clean -testcache && go test -v .
+
+cover:
+	go test -race -coverprofile=coverage.txt -covermode=atomic
+
+html: cover
+	go tool cover -html=coverage.txt
 
 lint:
 ifndef GOLINT
