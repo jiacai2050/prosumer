@@ -2,12 +2,24 @@ package prosumer
 
 import (
 	"errors"
-	"sync"
+	"net/http"
+	_ "net/http/pprof"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	go func() {
+		// for debug
+		// http://localhost:6060/debug/pprof/
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			panic(err)
+		}
+	}()
+}
 
 func TestBlock(t *testing.T) {
 
@@ -134,20 +146,14 @@ func TestDiscardOldest(t *testing.T) {
 
 func TestMultipleConsumer(t *testing.T) {
 
-	var received []int
-	var mux sync.Mutex
+	var received uint32
 	consumer := func(ls []interface{}) error {
-		mux.Lock()
-		defer mux.Unlock()
-		for _, e := range ls {
-			received = append(received, e.(int))
-		}
-
+		atomic.AddUint32(&received, uint32(len(ls)))
 		return nil
 	}
 
 	bufferSize := 100
-	maxLoop := 20000
+	maxLoop := 2000
 
 	config := DefaultConfig(Consumer(consumer))
 	config.BatchSize = 21
@@ -164,21 +170,15 @@ func TestMultipleConsumer(t *testing.T) {
 
 	coord.Close(true)
 
-	assert.Equal(t, len(received), maxLoop)
+	assert.Equal(t, uint32(maxLoop), atomic.LoadUint32(&received))
 }
 
 func TestBatchInterval(t *testing.T) {
 
-	var received []int
-	var mux sync.Mutex
+	var received uint32
 	var err = errors.New("test")
 	consumer := func(ls []interface{}) error {
-		mux.Lock()
-		defer mux.Unlock()
-		for _, e := range ls {
-			received = append(received, e.(int))
-		}
-
+		atomic.AddUint32(&received, uint32(len(ls)))
 		return err
 	}
 
@@ -186,7 +186,7 @@ func TestBatchInterval(t *testing.T) {
 
 	config := DefaultConfig(Consumer(consumer))
 	config.BatchSize = 3
-	config.BatchInterval = 80 * time.Millisecond
+	config.BatchInterval = 100 * time.Millisecond
 	config.BufferSize = 10
 	config.NumConsumer = 1
 	config.RejectPolicy = Block
@@ -199,6 +199,7 @@ func TestBatchInterval(t *testing.T) {
 
 	for i := 0; i < maxLoop; i++ {
 		coord.Put(i)
+
 		if i == 1 {
 			// test consume when
 			// 1. dequeue return false
@@ -216,5 +217,5 @@ func TestBatchInterval(t *testing.T) {
 
 	coord.Close(true)
 
-	assert.Equal(t, len(received), maxLoop)
+	assert.Equal(t, uint32(maxLoop), atomic.LoadUint32(&received))
 }

@@ -33,15 +33,15 @@ func (w worker) start() {
 				default:
 				}
 			}
-			watchdog.Reset(w.batchInterval)
 
 			err := w.consumer(received)
-
-			received = nil
 			if err != nil {
 				w.errCallback(received, err)
 			}
+
+			received = nil
 		}
+		watchdog.Reset(w.batchInterval)
 	}
 loop:
 	for {
@@ -59,8 +59,8 @@ loop:
 		} else {
 			select {
 			case <-w.close:
-				watchdog.Stop()
 				doWork()
+				watchdog.Stop()
 				w.waitClose.Done()
 				break loop
 			case <-watchdog.C:

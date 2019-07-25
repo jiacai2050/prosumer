@@ -64,8 +64,12 @@ func (q *queue) enqueue(e interface{}) ([]interface{}, error) {
 }
 
 func (q *queue) dequeue() (interface{}, bool) {
-	v, ok := <-q.ch
-	return v, ok
+	select {
+	case v, ok := <-q.ch:
+		return v, ok
+	default:
+		return nil, false
+	}
 }
 
 func (q *queue) size() int {
