@@ -1,6 +1,7 @@
 package prosumer
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	_ "net/http/pprof"
@@ -22,9 +23,8 @@ func init() {
 }
 
 func TestBlock(t *testing.T) {
-
 	var received []int
-	consumer := func(ls []interface{}) error {
+	consumer := func(ls []Element) error {
 		for _, e := range ls {
 			received = append(received, e.(int))
 		}
@@ -35,17 +35,13 @@ func TestBlock(t *testing.T) {
 	bufferSize := 100
 	maxLoop := 200
 
-	config := DefaultConfig(Consumer(consumer))
-	config.BatchSize = 21
-	config.BufferSize = bufferSize
-	config.NumConsumer = 1
-	config.RejectPolicy = Block
+	config := NewConfig(consumer, SetBatchSize(21), SetBufferSize(bufferSize), SetNumConsumer(1), SetRejectPolicy(Block))
 	coord := NewCoordinator(config)
 
 	coord.Start()
 
 	for i := 0; i < maxLoop; i++ {
-		coord.Put(i)
+		coord.Put(context.TODO(), i)
 	}
 
 	coord.Close(true)
@@ -59,9 +55,8 @@ func TestBlock(t *testing.T) {
 }
 
 func TestDiscard(t *testing.T) {
-
 	var received []int
-	consumer := func(ls []interface{}) error {
+	consumer := func(ls []Element) error {
 		for _, e := range ls {
 			received = append(received, e.(int))
 		}
@@ -72,17 +67,13 @@ func TestDiscard(t *testing.T) {
 	bufferSize := 100
 	maxLoop := 200
 
-	config := DefaultConfig(Consumer(consumer))
-	config.BatchSize = 21
-	config.BufferSize = bufferSize
-	config.NumConsumer = 1
-	config.RejectPolicy = Discard
+	config := NewConfig(consumer, SetBatchSize(21), SetBufferSize(bufferSize), SetNumConsumer(1), SetRejectPolicy(Discard))
 	coord := NewCoordinator(config)
 
 	coord.Start()
 
 	for i := 0; i < maxLoop; i++ {
-		coord.Put(i)
+		coord.Put(context.TODO(), i)
 	}
 
 	coord.Close(true)
@@ -102,9 +93,8 @@ func TestDiscard(t *testing.T) {
 }
 
 func TestDiscardOldest(t *testing.T) {
-
 	var received []int
-	consumer := func(ls []interface{}) error {
+	consumer := func(ls []Element) error {
 		for _, e := range ls {
 			received = append(received, e.(int))
 		}
@@ -115,17 +105,13 @@ func TestDiscardOldest(t *testing.T) {
 	bufferSize := 100
 	maxLoop := 200
 
-	config := DefaultConfig(Consumer(consumer))
-	config.BatchSize = 21
-	config.BufferSize = bufferSize
-	config.NumConsumer = 1
-	config.RejectPolicy = DiscardOldest
+	config := NewConfig(consumer, SetBatchSize(21), SetBufferSize(bufferSize), SetNumConsumer(1), SetRejectPolicy(DiscardOldest))
 	coord := NewCoordinator(config)
 
 	coord.Start()
 
 	for i := 0; i < maxLoop; i++ {
-		coord.Put(i)
+		coord.Put(context.TODO(), i)
 	}
 
 	coord.Close(true)
@@ -145,9 +131,8 @@ func TestDiscardOldest(t *testing.T) {
 }
 
 func TestMultipleConsumer(t *testing.T) {
-
 	var received uint32
-	consumer := func(ls []interface{}) error {
+	consumer := func(ls []Element) error {
 		atomic.AddUint32(&received, uint32(len(ls)))
 		return nil
 	}
@@ -155,17 +140,13 @@ func TestMultipleConsumer(t *testing.T) {
 	bufferSize := 100
 	maxLoop := 2000
 
-	config := DefaultConfig(Consumer(consumer))
-	config.BatchSize = 21
-	config.BufferSize = bufferSize
-	config.NumConsumer = 20
-	config.RejectPolicy = Block
+	config := NewConfig(consumer, SetBatchSize(21), SetBufferSize(bufferSize), SetNumConsumer(20), SetRejectPolicy(Block))
 	coord := NewCoordinator(config)
 
 	coord.Start()
 
 	for i := 0; i < maxLoop; i++ {
-		coord.Put(i)
+		coord.Put(context.TODO(), i)
 	}
 
 	coord.Close(true)
@@ -174,31 +155,25 @@ func TestMultipleConsumer(t *testing.T) {
 }
 
 func TestBatchInterval(t *testing.T) {
-
 	var received uint32
 	var err = errors.New("test")
-	consumer := func(ls []interface{}) error {
+	consumer := func(ls []Element) error {
 		atomic.AddUint32(&received, uint32(len(ls)))
 		return err
 	}
 
 	maxLoop := 10
 
-	config := DefaultConfig(Consumer(consumer))
-	config.BatchSize = 3
-	config.BatchInterval = 100 * time.Millisecond
-	config.BufferSize = 10
-	config.NumConsumer = 1
-	config.RejectPolicy = Block
-	config.ErrCallback = func(ls []interface{}, e error) {
-		assert.Equal(t, err, e)
-	}
+	config := NewConfig(consumer, SetBatchSize(10), SetBatchInterval(100*time.Millisecond),
+		SetNumConsumer(1), SetCallback(func(ls []Element, e error) {
+			assert.Equal(t, err, e)
+		}))
 	coord := NewCoordinator(config)
 
 	coord.Start()
 
 	for i := 0; i < maxLoop; i++ {
-		coord.Put(i)
+		coord.Put(context.TODO(), i)
 
 		if i == 1 {
 			// test consume when
@@ -218,4 +193,23 @@ func TestBatchInterval(t *testing.T) {
 	coord.Close(true)
 
 	assert.Equal(t, uint32(maxLoop), atomic.LoadUint32(&received))
+}
+
+func TestPutTimeout(t *testing.T) {
+	consumer := func(ls []Element) error {
+		return nil
+	}
+	config := NewConfig(consumer, SetBufferSize(1), SetBatchSize(10), SetBatchInterval(time.Hour))
+	coord := NewCoordinator(config)
+
+	ctx, cancel := context.WithTimeout(context.TODO(), 100*time.Millisecond)
+	defer cancel()
+	ds, err := coord.Put(ctx, 1)
+	assert.Nil(t, ds)
+	assert.Nil(t, err)
+
+	ds, err = coord.Put(ctx, 2)
+	assert.Equal(t, 1, len(ds))
+	assert.Equal(t, 2, ds[0])
+	assert.Equal(t, context.DeadlineExceeded, err)
 }

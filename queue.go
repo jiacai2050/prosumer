@@ -1,49 +1,36 @@
 package prosumer
 
 import (
-	"errors"
+	"context"
 	"sync"
 	"time"
 )
 
-// RejectPolicy control which elements get discarded when the queue is full
-type RejectPolicy int
-
-const (
-	// Block current goroutine, no element discarded
-	Block RejectPolicy = iota
-	// Discard current element
-	Discard
-	// Discard the oldest to make room for new element
-	DiscardOldest
-)
-
-var (
-	ErrDiscard       = errors.New("discard point")
-	ErrDiscardOldest = errors.New("discard oldest point")
-)
-
 type queue struct {
-	ch chan interface{}
+	ch chan Element
 
 	rp        RejectPolicy
 	waitClose *sync.WaitGroup
 }
 
-func (q *queue) enqueue(e interface{}) ([]interface{}, error) {
+func (q *queue) enqueue(ctx context.Context, e Element) ([]Element, error) {
 	select {
 	case q.ch <- e:
 		return nil, nil
 	default:
 		switch q.rp {
 		case Block:
-			q.ch <- e
-			return nil, nil
+			select {
+			case <-ctx.Done():
+				return []Element{e}, ctx.Err()
+			case q.ch <- e:
+				return nil, nil
+			}
 		case Discard:
-			return []interface{}{e}, ErrDiscard
+			return []Element{e}, ErrDiscard
 		case DiscardOldest:
+			var discarded []Element
 			for {
-				var discarded []interface{}
 				// when discard the oldest, other worker may preempt the slot,
 				// so may discard more than one element.
 				if v, ok := <-q.ch; ok {
@@ -52,24 +39,24 @@ func (q *queue) enqueue(e interface{}) ([]interface{}, error) {
 				select {
 				case q.ch <- e:
 					return discarded, ErrDiscardOldest
+				case <-ctx.Done():
+					return discarded, ctx.Err()
 				default:
 					// default is required for nonblocking read
 				}
 			}
-
 		}
-
 	}
+
 	return nil, nil
 }
 
-func (q *queue) dequeue() (interface{}, bool) {
+func (q *queue) dequeue() (Element, bool) {
 	select {
 	case v, ok := <-q.ch:
 		return v, ok
-	default:
-		return nil, false
 	}
+	return nil, false
 }
 
 func (q *queue) size() int {
@@ -95,7 +82,7 @@ func (q *queue) close(graceful bool) {
 
 func newQueue(bufferSize int, rp RejectPolicy, waitClose *sync.WaitGroup) *queue {
 	return &queue{
-		ch:        make(chan interface{}, bufferSize),
+		ch:        make(chan Element, bufferSize),
 		rp:        rp,
 		waitClose: waitClose,
 	}

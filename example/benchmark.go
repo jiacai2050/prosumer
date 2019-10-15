@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"log"
 	"math"
 	"net/http"
 	_ "net/http/pprof"
@@ -25,7 +26,7 @@ func main() {
 
 	var ops uint64
 
-	consumer := func(ls []interface{}) error {
+	consumer := func(ls []prosumer.Element) error {
 		atomic.AddUint64(&ops, uint64(len(ls)))
 		return nil
 	}
@@ -33,24 +34,21 @@ func main() {
 	go func() {
 		var last uint64
 		for {
-			now := time.Now()
 			current := atomic.LoadUint64(&ops)
 
-			fmt.Printf("%s ops=%v\n", now, current-last)
+			log.Printf("ops=%v\n", current-last)
 
 			last = current
 			time.Sleep(time.Second)
 		}
 
 	}()
-	conf := prosumer.DefaultConfig(prosumer.Consumer(consumer))
-	conf.NumConsumer = 1
-	conf.BatchSize = 512
-	c := prosumer.NewCoordinator(conf)
+	config := prosumer.NewConfig(consumer, prosumer.SetBatchSize(512), prosumer.SetNumConsumer(1))
+	c := prosumer.NewCoordinator(config)
 	c.Start()
 
 	maxLoop := math.MaxInt64
 	for i := 0; i < maxLoop; i++ {
-		c.Put(i)
+		c.Put(context.TODO(), i)
 	}
 }

@@ -1,13 +1,10 @@
 package prosumer
 
 import (
-	"fmt"
+	"context"
 	"sync"
 	"time"
 )
-
-// Consumer process elements from queue
-type Consumer func(ls []interface{}) error
 
 type worker struct {
 	*queue
@@ -17,11 +14,11 @@ type worker struct {
 	consumer      Consumer
 	batchSize     int
 	batchInterval time.Duration
-	errCallback   func(ls []interface{}, err error)
+	cb            Callback
 }
 
 func (w worker) start() {
-	received := make([]interface{}, 0, w.batchSize)
+	received := make([]Element, 0, w.batchSize)
 	watchdog := time.NewTimer(w.batchInterval)
 
 	doWork := func() {
@@ -35,11 +32,8 @@ func (w worker) start() {
 			}
 
 			err := w.consumer(received)
-			if err != nil {
-				w.errCallback(received, err)
-			}
-
-			received = nil
+			w.cb(received, err)
+			received = received[:0]
 		}
 		watchdog.Reset(w.batchInterval)
 	}
@@ -68,7 +62,6 @@ loop:
 			}
 
 		}
-
 	}
 }
 
@@ -87,22 +80,22 @@ type Coordinator struct {
 
 func NewCoordinator(config Config) Coordinator {
 	var waitClose sync.WaitGroup
-	waitClose.Add(config.NumConsumer + 1) // +1 for queue
+	waitClose.Add(config.numConsumer + 1) // +1 for queue
 
 	closeCh := make(chan struct{})
-	q := newQueue(config.BufferSize, config.RejectPolicy, &waitClose)
+	q := newQueue(config.bufferSize, config.rp, &waitClose)
 	c := Coordinator{
 		queue: q,
 		worker: &worker{
 			queue:         q,
 			close:         closeCh,
 			waitClose:     &waitClose,
-			consumer:      config.Consumer,
-			batchSize:     config.BatchSize,
-			batchInterval: config.BatchInterval,
-			errCallback:   config.ErrCallback,
+			consumer:      config.consumer,
+			batchSize:     config.batchSize,
+			batchInterval: config.batchInterval,
+			cb:            config.cb,
 		},
-		numConsumer: config.NumConsumer,
+		numConsumer: config.numConsumer,
 		close:       closeCh,
 		waitClose:   &waitClose,
 	}
@@ -131,7 +124,7 @@ func (c Coordinator) Close(graceful bool) error {
 }
 
 // Put new element into inner buffer queue. It return error when inner buffer queue is full, and elements failed putting to queue is the first return value.
-// Due to different RejectPolicy, multiple elements may be discarded before current element put successfully.
+// Due to different rejectPolicy, multiple elements may be discarded before current element put successfully.
 // Common usages pattern:
 //
 //  discarded, err := c.Put(e)
@@ -139,46 +132,11 @@ func (c Coordinator) Close(graceful bool) error {
 // 	  fmt.Errorf("discarded elements %+v for err %v", discarded, err)
 //  }
 //
-func (c Coordinator) Put(e interface{}) ([]interface{}, error) {
-	return c.queue.enqueue(e)
+func (c Coordinator) Put(ctx context.Context, e Element) ([]Element, error) {
+	return c.queue.enqueue(ctx, e)
 }
 
 // RemainingCapacity return how many elements inner buffer queue can hold.
 func (c Coordinator) RemainingCapacity() int {
 	return c.queue.cap() - c.queue.size()
-}
-
-type Config struct {
-	// BufferSize set inner buffer queue's size
-	BufferSize int
-	// RejectPolicy control which elements get discarded when the queue is full
-	RejectPolicy
-
-	// BatchSize set how many elements Consumer can get from queue
-	BatchSize int
-	// BatchInterval set how long Consumer can get from queue
-	BatchInterval time.Duration
-	// ErrCallback is invoked when Consumer return error, with elements provided.
-	ErrCallback func(ls []interface{}, err error)
-
-	Consumer
-	NumConsumer int
-}
-
-// DefaultConfig return a minimum config for convenience, custom specific param according to your situation.
-// Warn: default RejectPolicy is Block.
-func DefaultConfig(con Consumer) Config {
-	return Config{
-		BufferSize:   10000,
-		RejectPolicy: Block,
-
-		BatchSize:     100,
-		BatchInterval: 500 * time.Millisecond,
-		ErrCallback: func(ls []interface{}, err error) {
-			fmt.Println(fmt.Errorf("consumer failed. list: %v, err: %v", ls, err))
-		},
-
-		NumConsumer: 2,
-		Consumer:    con,
-	}
 }
