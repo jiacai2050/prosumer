@@ -55,8 +55,10 @@ func (q *queue) dequeue() (Element, bool) {
 	select {
 	case v, ok := <-q.ch:
 		return v, ok
+	default:
+		return nil, false
 	}
-	return nil, false
+
 }
 
 func (q *queue) size() int {

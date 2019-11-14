@@ -1,5 +1,5 @@
 run:
   skip-dirs:
-    - example
+    - vendor
   skip-files:
     - .*_test.go

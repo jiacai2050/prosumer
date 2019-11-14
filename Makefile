@@ -17,4 +17,4 @@ lint:
 ifndef GOLINT
 	go get github.com/golangci/golangci-lint/cmd/golangci-lint
 endif
-	golangci-lint run
+	golangci-lint run -v
