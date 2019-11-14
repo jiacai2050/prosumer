@@ -23,40 +23,8 @@ If you have any suggestions/questions, open a PR.
 
 ## Usage
 
-This is just a quick introduction, view the [GoDoc](https://godoc.org/github.com/jiacai2050/prosumer) for details.
-
-Let's start with a trivial example:
-
-```go
-func main() {
-	maxLoop := 10
-	var wg sync.WaitGroup
-	wg.Add(maxLoop)
-	defer wg.Wait()
-	
-	consumer := func(ls []interface{}) error {
-		fmt.Printf("get %+v \n", ls)
-		wg.Add(-len(ls))
-		return nil
-	}
-
-	conf := prosumer.DefaultConfig(prosumer.Consumer(consumer))
-	c := prosumer.NewCoordinator(conf)
-	c.Start()
-
-	for i := 0; i < maxLoop; i++ {
-		fmt.Printf("try put %v\n", i)
-		discarded, err := c.Put(i)
-		if err != nil {
-			fmt.Errorf("discarded elements %+v for err %v", discarded, err)
-			wg.Add(-len(discarded))
-		}
-		time.Sleep(time.Second)
-	}
-	c.Close(true)
-}
-```
+There is a [quickstart example](./examples/quickstart/main.go) , view the [GoDoc](https://godoc.org/github.com/jiacai2050/prosumer) for details.
 
 ## License
 
-[MIT License](http://liujiacai.net/license/MIT.html?year=2019) © Jiacai Liu
+[MIT License](./LICENSE)
