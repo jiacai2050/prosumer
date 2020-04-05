@@ -2,6 +2,7 @@ package prosumer
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 )
@@ -22,15 +23,26 @@ func (w worker) start() {
 	watchdog := time.NewTimer(w.batchInterval)
 
 	doWork := func() {
-		if len(received) > 0 {
-			if !watchdog.Stop() {
-				// try to drain from the channel
-				select {
-				case <-watchdog.C:
-				default:
-				}
-			}
+		watchdog.Stop()
+		// don't need to drain the channel here
+		// since the channel already drained in `for loop` below
+		// if !watchdog.Stop() {
+		// 	// try to drain the channel
+		// 	select {
+		//  // we can't get here
+		// 	case <-watchdog.C:
+		// 		if enable_race {
+		// 			log.Println("drain the channel")
+		// 		}
+		// 	// for those reach batchInterval
+		// 	default:
+		// 		if enable_race {
+		// 			log.Println("channel already drained")
+		// 		}
+		// 	}
+		// }
 
+		if len(received) > 0 {
 			err := w.consumer(received)
 			w.cb(received, err)
 			received = received[:0]
@@ -42,10 +54,16 @@ loop:
 		if e, ok := w.queue.dequeue(); ok {
 			received = append(received, e)
 			if len(received) >= w.batchSize {
+				if enable_race {
+					log.Println("doWork for reach batchSize")
+				}
 				doWork()
 			} else {
 				select {
 				case <-watchdog.C:
+					if enable_race {
+						log.Println("doWork for reach batchInterval while dequeue")
+					}
 					doWork()
 				default:
 				}
@@ -58,6 +76,9 @@ loop:
 				w.waitClose.Done()
 				break loop
 			case <-watchdog.C:
+				if enable_race {
+					log.Println("doWork for reach batchInterval")
+				}
 				doWork()
 			}
 

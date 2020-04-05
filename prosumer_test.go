@@ -174,20 +174,34 @@ func TestBatchInterval(t *testing.T) {
 
 	for i := 0; i < maxLoop; i++ {
 		coord.Put(context.TODO(), i)
+		time.Sleep(50 * time.Millisecond)
+	}
 
-		if i == 1 {
-			// test consume when
-			// 1. dequeue return false
-			// 2. batchInterval is met
-			// 3. batchSize isn't met
-			time.Sleep(300 * time.Millisecond)
-		} else {
-			// test consume when
-			// 1. dequeue return true
-			// 2. batchInterval is met
-			// 3. batchSize isn't met
-			time.Sleep(50 * time.Millisecond)
-		}
+	coord.Close(true)
+
+	assert.Equal(t, uint32(maxLoop), atomic.LoadUint32(&received))
+}
+
+func TestBatchIntervalWhileReceive(t *testing.T) {
+	var received uint32
+	var err = errors.New("test")
+	consumer := func(ls []Element) error {
+		atomic.AddUint32(&received, uint32(len(ls)))
+		return err
+	}
+
+	maxLoop := 100000
+
+	config := NewConfig(consumer, SetBatchSize(20000), SetBatchInterval(3*time.Millisecond),
+		SetNumConsumer(1), SetCallback(func(ls []Element, e error) {
+			assert.Equal(t, err, e)
+		}))
+	coord := NewCoordinator(config)
+
+	coord.Start()
+
+	for i := 0; i < maxLoop; i++ {
+		coord.Put(context.TODO(), i)
 	}
 
 	coord.Close(true)
